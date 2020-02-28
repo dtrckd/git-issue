@@ -2,6 +2,20 @@
 # shellcheck disable=2039
 # SC2039: In POSIX sh, 'local' is undefined
 
+GITLAB_PROVIDER="https://gitlab.com"
+while read -r name value
+do
+    if [ "$name" = "provider_domain" ]; then
+        GITLAB_PROVIDER=$(echo $value | sed  "s/^ *= *//")
+	fi
+    if [ "$name" = "gitlab_token" ]; then
+        GL_CURL_AUTH="PRIVATE-TOKEN: $(echo $value | sed  "s/^ *= *//")"
+	fi
+    if [ "$name" = "github_token" ]; then
+        GH_CURL_AUTH="Authorization: token $(echo $value | sed  "s/^ *= *//")"
+	fi
+done < .issues/config
+
 # import: import issues from GitHub/GitLab {{{1
 usage_import()
 {
@@ -191,7 +205,7 @@ create_issue()
     esac
   done
   shift $((OPTIND - 1));
-    
+
   test -n "$1" || usage_create_issue
   test "$2" = github -o "$2" = gitlab || usage_create_issue
   test -n "$3" || usage_create_issue
@@ -228,7 +242,7 @@ create_issue()
         jstring=$(printf '%s' "$jstring" | jq ". + { assignees : $(echo "$assignee" | tr -d '\n' | jq --slurp --raw-input 'split(" ")') }")
       fi
     else
-      rest_api_get "https://gitlab.com/api/v4/users?username=$(echo "$assignee" | cut -f 1 -d ' ')" assignee gitlab
+      rest_api_get "GITLAB_PROVIDER/api/v4/users?username=$(echo "$assignee" | cut -f 1 -d ' ')" assignee gitlab
       if [ "$(cat assignee-body)" = '[]' ] ; then
         echo "Couldn't find assignee in GitLab, skipping assignment."
       else
@@ -337,7 +351,7 @@ create_issue()
       mileurl="https://api.github.com/repos/$user/$repo/milestones"
       jmileid='number'
     else
-      mileurl="https://gitlab.com/api/v4/projects/$user%2F$escrepo/milestones"
+      mileurl="$GITLAB_PROVIDER/api/v4/projects/$user%2F$escrepo/milestones"
       jmileid='id'
     fi
     # get milestone list
@@ -376,7 +390,7 @@ create_issue()
       url="https://api.github.com/repos/$user/$repo/issues/$num"
       rest_api_send "$url" update "$jstring" PATCH github
     else
-      url="https://gitlab.com/api/v4/projects/$user%2F$escrepo/issues/$num"
+      url="$GITLAB_PROVIDER/api/v4/projects/$user%2F$escrepo/issues/$num"
       rest_api_send "$url" update "$jstring" PUT gitlab
     fi
   else
@@ -394,7 +408,7 @@ create_issue()
     if [ "$provider" = github ] ; then
       url="https://api.github.com/repos/$user/$repo/issues"
     else
-      url="https://gitlab.com/api/v4/projects/$user%2F$escrepo/issues"
+      url="$GITLAB_PROVIDER/api/v4/projects/$user%2F$escrepo/issues"
     fi
     rest_api_send "$url" create "$jstring" POST "$provider"
     if [ "$provider" = github ] ; then
@@ -403,7 +417,7 @@ create_issue()
     else
       num=$(jq '.iid' create-body)
       # update url to that of created issue
-      url="https://gitlab.com/api/v4/projects/$user%2F$escrepo/issues/$num"
+      url="$GITLAB_PROVIDER/api/v4/projects/$user%2F$escrepo/issues/$num"
     fi
   fi
   import_dir="imports/$provider/$user/$repo/$num"
@@ -459,7 +473,7 @@ create_issue()
 }
 
 # Create a comment in GitHub/GitLab, based on a local one
-# create_comment 
+# create_comment
 create_comment()
 {
   local cbody cfound cjstring csha isha path provider user repo num import_dir url escrepo j
@@ -470,12 +484,12 @@ create_comment()
   repo="$4"
   num="$5"
 
-  
+
   if [ "$provider" = github ] ; then
     url="https://api.github.com/repos/$user/$repo/issues/$num"
   else
     escrepo=$(urlescape "$repo")
-    url="https://gitlab.com/api/v4/projects/$user%2F$escrepo/issues/$num"
+    url="$GITLAB_PROVIDER/api/v4/projects/$user%2F$escrepo/issues/$num"
   fi
 
   import_dir="imports/$provider/$user/$repo/$num/"
@@ -528,7 +542,7 @@ create_comment()
   git add "$import_dir"
   # mark export
   commit "gi: Export comment $csha" "gi comment export $csha at $provider $user $repo"
-  rm -f commentupdate-header commentupdate-body commentcreate-header commentcreate-body 
+  rm -f commentupdate-header commentupdate-body commentcreate-header commentcreate-body
 }
 
 # Import GitHub/GitLab comments for the specified issue
@@ -556,7 +570,7 @@ import_comments()
     # if $repo contains '/' then it's part of a group and needs to be escaped
     local escrepo
     escrepo=$(urlescape "$repo")
-    endpoint="https://gitlab.com/api/v4/projects/$user%2F$escrepo/issues/$issue_number/notes"
+    endpoint="$GITLAB_PROVIDER/api/v4/projects/$user%2F$escrepo/issues/$issue_number/notes"
     juser='author.username'
   else
     trans_abort
@@ -736,7 +750,7 @@ import_issues()
         echo "$timespent" >"$path/timespent" || trans_abort
         git add "$path/timespent" || trans_abort
       fi
-      
+
       # Timeestimate
       timeestimate=$(jq -r ".[$i].time_stats.time_estimate" issue-body)
       if [ "$timeestimate" = '0' ] ; then
@@ -804,7 +818,7 @@ export_issues()
     esac
   done
   shift $((OPTIND - 1));
- 
+
   test -n "$2" -a -n "$3" || usage_export
   test "$1" = github -o "$1" = gitlab || usage_export
   provider=$1
@@ -903,7 +917,7 @@ sub_import()
       # if $repo contains '/' then it's part of a group and needs to be escaped
       local escrepo
       escrepo=$(urlescape "$repo")
-      endpoint="https://gitlab.com/api/v4/projects/$user%2F$escrepo/issues"
+      endpoint="$GITLAB_PROVIDER/api/v4/projects/$user%2F$escrepo/issues"
     fi
   while true ; do
     rest_api_get "$endpoint" issue "$provider"

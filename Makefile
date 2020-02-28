@@ -1,4 +1,4 @@
-PREFIX ?= /usr/local
+PREFIX ?= $(HOME)/.local
 BINPREFIX ?= "$(PREFIX)/bin"
 LIBPREFIX ?= "$(PREFIX)/lib"
 MANPREFIX ?= "$(PREFIX)/share/man/man1"
